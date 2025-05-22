@@ -177,7 +177,7 @@ direct_exp_gen:
 
     [Partial Response Format 1] Your generated output should contain key-value pairs adhering to the following format and specifications:
     {{ hypothesis_output_format }}
-    Also generate the relevant keys for the reasoning and the distilled knowledge that follows. For those keys, in particular for knowledge, explain in the context of the specific scenario to build up domain knowledge in the specific field rather than general knowledge.
+    Also generate the relevant keys for the reasoning and the distilled knowledge that follows. For those keys, in particular for knowledge, explain in the context of the specific scenario to build up domain knowledge in the specific field rather than general knowledge. Also do fill the concise_knowledge field.
 
     # Step2: Task Design
 

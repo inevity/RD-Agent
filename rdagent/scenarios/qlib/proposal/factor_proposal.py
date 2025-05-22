@@ -42,10 +42,15 @@ class QlibFactorHypothesisGen(FactorHypothesisGen):
         hypothesis = QlibFactorHypothesis(
             hypothesis=response_dict["hypothesis"],
             reason=response_dict["reason"],
-            concise_reason=response_dict["concise_reason"],
+            # concise_reason=response_dict["concise_reason"],
+            concise_reason=response_dict["concise_reason"] if "concise_reason" in response_dict else "",
+            # TODO fix by aks again should valdie from the input requirement 
+            # concise_reason = response_dict.get("concise_reason", "")
             concise_observation=response_dict["concise_observation"],
             concise_justification=response_dict["concise_justification"],
-            concise_knowledge=response_dict["concise_knowledge"],
+            # concise_knowledge=response_dict["concise_knowledge"],
+            # let return the concise kn
+            concise_knowledge=response_dict["concise_knowledge"] if "concise_knowledge" in response_dict else "",
         )
         return hypothesis
 
