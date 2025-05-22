@@ -10,7 +10,7 @@ from litellm import (
 
 from rdagent.log import LogColors
 from rdagent.log import rdagent_logger as logger
-from rdagent.oai.backend.base import APIBackend
+from rdagent.oai.backend.base import APIBackend,truncate
 from rdagent.oai.llm_conf import LLMSettings
 
 

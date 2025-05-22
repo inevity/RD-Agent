@@ -32,6 +32,173 @@ except ImportError:
     openai_imported = False
 
 
+def truncate(data: Any, max_length: int = 500) -> Any:
+    """Helper to truncate long messages for logging"""
+    if isinstance(data, (list, dict, str)):
+        str_repr = str(data)
+        return f"{str_repr[:max_length]}...[truncated]" if len(str_repr) > max_length else str_repr
+    return data
+
+# def fix_code_json(raw_text: str) -> str:
+#     """
+#     Fix a JSON string that contains only a single 'code' field
+#     with possibly unescaped multiline content.
+#     If the JSON doesn't match exactly this structure, return it unchanged.
+#     Args:
+#         raw_text (str): The raw JSON string to fix.
+#     Returns:
+#         str: Fixed JSON string, or original string if not match.
+#     """
+#     match = re.fullmatch(r'\s*\{\s*"code"\s*:\s*"((?:[^"\\]|\\.|\\n|\\r|\\t|[\n\r])*)"\s*\}\s*', raw_text, re.DOTALL)
+#     if match:
+#         raw_code = match.group(1)
+#         try:
+#             # Decode any escaped characters like \\n -> \n
+#             normalized_code = bytes(raw_code, "utf-8").decode("unicode_escape")
+#         except Exception:
+#             normalized_code = raw_code
+#         return json.dumps({"code": normalized_code}, indent=4)
+#
+#     # For all other cases, return original
+#     return raw_text
+def fix_code_json(raw_text: str) -> str:
+    """
+    Fix a broken JSON string with only a 'code' key and unescaped multiline value.
+    Return the fixed JSON if it matches, else return original string.
+
+    Args:
+        raw_text (str): A potentially broken JSON string.
+
+    Returns:
+        str: Properly escaped JSON string if it's only {"code": ...}, else original.
+    """
+    # Match only JSON with exactly one "code" key and raw string value (may have real newlines)
+    match = re.fullmatch(
+        r'\s*\{\s*"code"\s*:\s*"((?:[^"\\]|\\.|[\n\r])*)"\s*\}\s*',
+        raw_text,
+        re.DOTALL
+    )
+
+    if match:
+        raw_code = match.group(1)
+        try:
+            # Decode backslash-escaped characters like \\n into \n
+            decoded_code = bytes(raw_code, "utf-8").decode("unicode_escape")
+        except Exception:
+            decoded_code = raw_code
+        return json.dumps({"code": decoded_code}, indent=4)
+    
+    # Return original if doesn't match exactly {"code": ...}
+    return raw_text
+
+def sanitize_and_parse_json(json_str: str) -> Dict[str, Any]:
+    """
+    Fix common JSON issues (invalid control chars, trailing commas, etc.)
+    and parse the string into a Python dict.
+    
+    Args:
+        json_str: Potentially malformed JSON string
+        
+    Returns:
+        Parsed JSON as a Python dictionary
+        
+    Raises:
+        ValueError: If JSON cannot be repaired or parsed
+    """
+    # Fix 1: Remove invalid control characters (like standalone backslashes)
+    sanitized = re.sub(r'(?<!\\)\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', json_str)
+    
+    # Fix 2: Escape newlines properly
+    sanitized = sanitized.replace('\n', '\\n').replace('\r', '\\r')
+    
+    # Fix 3: Remove trailing commas
+    sanitized = re.sub(r',(\s*[}\]])', r'\1', sanitized)
+    
+    try:
+        return json.loads(sanitized)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to parse JSON after sanitization: {e}")
+
+
+def fix_code_field_backslash(json_txt: str) -> str:
+    try:
+        # Match the content of the "code" field using a regex group
+        def replace_in_code(match):
+            code_content = match.group(1)
+            # Replace comma + space + backslash with comma + \n
+            fixed_code = re.sub(r",\s*\\", ", \\n", code_content)
+            return f'"code": "{fixed_code}"'
+
+        # This regex safely matches the content inside the "code" field (non-greedy)
+        fixed_txt = re.sub(
+            r'"code":\s*"((?:[^"\\]|\\.)*?)"',
+            replace_in_code,
+            json_txt,
+            flags=re.DOTALL
+        )
+
+        # Try parsing the result to ensure it's valid JSON
+        json.loads(fixed_txt)
+        return fixed_txt
+    except Exception:
+        return json_txt  # fallback if any issue
+
+
+def fix_formulation_slash(text: str) -> str:
+    """
+    Replaces escaped backslashes (\\) in the value of the 'formulation' key
+    with real newline characters \n. If 'formulation' not found, return original.
+
+    Args:
+        text (str): Original JSON text.
+
+    Returns:
+        str: Modified JSON string if applicable, otherwise original text.
+    """
+    pattern = r'"formulation"\s*:\s*"((?:[^"\\]|\\.)*?)"'
+
+    match = re.search(pattern, text, flags=re.DOTALL)
+    if not match:
+        return text  # 🔁 No formulation found — return original
+
+    original_value = match.group(1)
+    if "\\\\" not in original_value:
+        return text  # 🔁 No double-backslash to replace — return original
+
+    # 🔧 Replace \\ with real newline
+    fixed_value = original_value.replace('\\\\', '\n')
+    fixed_text = re.sub(pattern, f'"formulation": "{fixed_value}"', text, flags=re.DOTALL)
+    return fixed_text
+
+def fix_json_escaping(json_txt: str) -> str:
+    try:
+        # Try parsing the original JSON first
+        json.loads(json_txt)
+        return json_txt
+    except json.JSONDecodeError:
+        # Match and fix the "formulation" field
+        def escape_backslashes_except_newlines(match):
+            content = match.group(1)
+            # Replace all \ that are not followed by 'n' (i.e., not \n)
+            fixed = re.sub(r'\\(?!n)', r'\\\\', content)
+            return f'"formulation": "{fixed}"'
+
+        fixed_txt = re.sub(
+            r'"formulation":\s*"((?:[^"\\]|\\.)*?)"',
+            escape_backslashes_except_newlines,
+            json_txt,
+            flags=re.DOTALL
+        )
+
+        try:
+            json.loads(fixed_txt)
+            return fixed_txt
+        except json.JSONDecodeError:
+            return json_txt
+
+
+
+
 class SQliteLazyCache(SingletonBaseClass):
     def __init__(self, cache_location: str) -> None:
         super().__init__()
@@ -519,6 +686,67 @@ class APIBackend(ABC):
 
             if finish_reason is None or finish_reason != "length":
                 if json_mode:
+                    #all_response = json.dumps(all_response)
+                    #def normalize_python_to_json(python_str):
+                    #    # Replace Python-style booleans with JSON-style
+                    #    python_str = re.sub(r'\bTrue\b', 'true', python_str)
+                    #    python_str = re.sub(r'\bFalse\b', 'false', python_str)
+                    #    python_str = re.sub(r'\bNone\b', 'null', python_str)
+                    #    
+                    #    try:
+                    #        # Validate that it's proper JSON now
+                    #        json.loads(python_str)
+                    #        return python_str
+                    #    except json.JSONDecodeError as e:
+                    #        return f"Error: Could not normalize to valid JSON: {e}"
+
+
+
+                    #def parse_markdown_json(input_str):
+                    #    # Remove code fence markers if present
+                    #    if input_str.startswith("```"):
+                    #        # Find first and last occurrence of code fences
+                    #        start_idx = input_str.find("\n") + 1
+                    #        end_idx = input_str.rfind("```")
+                    #        if end_idx > start_idx:
+                    #            input_str = input_str[start_idx:end_idx].strip()
+                    #    
+                    #    try:
+                    #        return json.loads(input_str)
+                    #    except json.JSONDecodeError as e:
+                    #        print(f"JSON parse error: {e}")
+                    #        return None
+
+                    #all_response = normalize_python_to_json(all_response)
+
+                    import re
+
+                    def remove_thinking(text):
+                        # Remove everything between <think> and </think> tags (including the tags)
+                        cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+                        
+                        # Alternative pattern if the closing tag is <think/>
+                        cleaned_text = re.sub(r'<think>.*?<think/>', '', cleaned_text, flags=re.DOTALL)
+                        
+                        # Clean up any extra whitespace that might remain
+                        cleaned_text = re.sub(r'\n\s*\n', '\n\n', cleaned_text)
+                        
+                        return cleaned_text.strip()
+                    
+                    all_response = all_response.replace(': False', ': false')
+                    all_response = all_response.replace(': True', ': true')
+                    all_response = remove_thinking(all_response)
+                    #code
+                    all_response = fix_code_json(all_response)
+
+                    #formulation
+                    # all_response = fix_formulation_slash(all_response)
+                    # logger.info(f"fixed response formulation slash:{all_response}")
+                    all_response = fix_json_escaping(all_response)
+                    logger.info(f"fixed response formulation escape:{all_response}")
+
+                    all_response = fix_code_field_backslash(all_response)
+                    logger.info(f"fixed response:{all_response}")
                     try:
                         
                         logger.info("load all_response in try")
