@@ -23,8 +23,11 @@ class QlibFactorExperiment(FactorExperiment[FactorTask, QlibFBWorkspace, FactorF
 
 class QlibFactorScenario(Scenario):
     def __init__(self) -> None:
+        print("--qlib factor scenario init")
         super().__init__()
+        print("--qlib factor scenario init: to data folder init")
         self._background = deepcopy(prompt_dict["qlib_factor_background"])
+        print("--qlib factor scenario init: end data folder init")
         self._source_data = deepcopy(get_data_folder_intro())
         self._output_format = deepcopy(prompt_dict["qlib_factor_output_format"])
         self._interface = deepcopy(prompt_dict["qlib_factor_interface"])

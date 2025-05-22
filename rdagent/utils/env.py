@@ -39,6 +39,7 @@ from rdagent.core.experiment import RD_AGENT_SETTINGS
 from rdagent.log import rdagent_logger as logger
 from rdagent.oai.llm_utils import md5_hash
 from rdagent.utils.workflow import wait_retry
+import inspect, traceback
 
 
 def pull_image_with_progress(image: str) -> None:
@@ -78,7 +79,7 @@ class EnvConf(ExtendedBaseSettings):
 
 ASpecificEnvConf = TypeVar("ASpecificEnvConf", bound=EnvConf)
 
-
+# dfsf?
 class Env(Generic[ASpecificEnvConf]):
     """
     We use BaseModel as the setting due to the features it provides
@@ -139,6 +140,9 @@ class Env(Generic[ASpecificEnvConf]):
         -------
             the stdout
         """
+        logger.info("qlib run fn")
+        print("Call stack:")
+        traceback.print_stack()
         stdout, _ = self.run_ret_code(entry=entry, local_path=local_path, env=env, **kwargs)
         return stdout
 
@@ -150,6 +154,8 @@ class Env(Generic[ASpecificEnvConf]):
         running_extra_volume: Mapping = MappingProxyType({}),
         remove_timestamp: bool = True,
     ) -> tuple[str, int]:
+        print("Call stack:")
+        traceback.print_stack()
         # TODO: remove_timestamp can be implemented in a shallower way...
         for retry_index in range(self.conf.retry_count + 1):
             try:
@@ -201,6 +207,15 @@ class Env(Generic[ASpecificEnvConf]):
         -------
             A tuple containing the stdout and the exit code
         """
+        print("Env:run_ret_code")
+        # caller_frame = inspect.stack()[1]
+        # caller_name = caller_frame.function
+        # caller_file = caller_frame.filename
+        # caller_line = caller_frame.lineno
+        #
+        # logger.info(f"Called by function '{caller_name}' in {caller_file}, line {caller_line}")
+        print("Call stack:")
+        traceback.print_stack()
         running_extra_volume = kwargs.get("running_extra_volume", {})
         if entry is None:
             entry = self.conf.default_entry
@@ -219,9 +234,14 @@ class Env(Generic[ASpecificEnvConf]):
             + "exit $entry_exit_code'"
         )
 
+        # stdout, return_code = self.__run_ret_code_with_retry(
+        #     entry_add_timeout, local_path, env, running_extra_volume, remove_timestamp=False
+        # )
         if self.conf.enable_cache:
+            logger.info("-------enable cache")
             stdout, return_code = self.cached_run(entry_add_timeout, local_path, env, running_extra_volume)
         else:
+            logger.info("-------disable cache")
             stdout, return_code = self.__run_ret_code_with_retry(
                 entry_add_timeout, local_path, env, running_extra_volume, remove_timestamp=False
             )
@@ -241,6 +261,8 @@ class Env(Generic[ASpecificEnvConf]):
         Will cache the output and the folder diff for next round of running.
         Use the python codes and the parameters(entry, running_extra_volume) as key to hash the input.
         """
+        print("Call stack:")
+        traceback.print_stack()
         target_folder = Path(RD_AGENT_SETTINGS.pickle_cache_folder_path_str) / f"utils.env.run"
         target_folder.mkdir(parents=True, exist_ok=True)
 
@@ -369,7 +391,7 @@ class LocalEnv(Env[ASpecificLocalConf]):
             entry = self.conf.default_entry
 
         print(Rule("[bold green]LocalEnv Logs Begin[/bold green]", style="dark_orange"))
-        table = Table(title="Run Info", show_header=False)
+        table = Table(title="localenv._run_ret_code Run Info", show_header=False)
         table.add_column("Key", style="bold cyan")
         table.add_column("Value", style="bold magenta")
         table.add_row("Entry", entry)
@@ -412,6 +434,7 @@ class MLECondaConf(CondaConf):
 
 ## Docker Environment -----
 class DockerConf(EnvConf):
+    print("---- dockerconf")
     build_from_dockerfile: bool = False
     dockerfile_folder_path: Optional[Path] = (
         None  # the path to the dockerfile optional path provided when build_from_dockerfile is False
@@ -427,6 +450,7 @@ class DockerConf(EnvConf):
     # So we just want to download it once.
     network: str | None = "bridge"  # the network mode for the docker
     shm_size: str | None = None
+
     enable_gpu: bool = True  # because we will automatically disable GPU if not available. So we enable it by default.
     mem_limit: str | None = "48g"  # Add memory limit attribute
     cpu_count: int | None = None  # Add CPU limit attribute
@@ -440,6 +464,9 @@ class DockerConf(EnvConf):
 
 
 class QlibDockerConf(DockerConf):
+    print("---- qlibdockerconf")
+    # class attr, 
+    print("config QLIB_DOCKER_ENABLE_CACHE")
     model_config = SettingsConfigDict(env_prefix="QLIB_DOCKER_")
 
     build_from_dockerfile: bool = True
@@ -449,8 +476,10 @@ class QlibDockerConf(DockerConf):
     default_entry: str = "qrun conf.yaml"
     extra_volumes: dict = {str(Path("~/.qlib/").expanduser().resolve().absolute()): "/root/.qlib/"}
     shm_size: str | None = "16g"
+    # enable_gpu: bool = False
     enable_gpu: bool = True
     enable_cache: bool = False
+    # enable_cache: bool = True
 
 
 class DMDockerConf(DockerConf):
@@ -530,6 +559,7 @@ class DockerEnv(Env[DockerConf]):
     # TODO: Save the output into a specific file
 
     def prepare(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        logger.info("---- prepare method of DockerEnv(Env[DOckerConf])")
         """
         Download image if it doesn't exist
         """
@@ -544,6 +574,7 @@ class DockerEnv(Env[DockerConf]):
                 path=str(self.conf.dockerfile_folder_path), tag=self.conf.image, network_mode=self.conf.network
             )
             if isinstance(resp_stream, str):
+                logger.info("----build image log")
                 logger.info(resp_stream)
             with Progress(SpinnerColumn(), TextColumn("{task.description}")) as p:
                 task = p.add_task("[cyan]Building image...")
@@ -639,6 +670,7 @@ class DockerEnv(Env[DockerConf]):
         remove_timestamp: bool = True,
         **kwargs: Any,
     ) -> tuple[str, int]:
+        print("------- _run_ret_code")
         if env is None:
             env = {}
         env["PYTHONWARNINGS"] = "ignore"
@@ -679,7 +711,7 @@ class DockerEnv(Env[DockerConf]):
             )
             logs = container.logs(stream=True)
             print(Rule("[bold green]Docker Logs Begin[/bold green]", style="dark_orange"))
-            table = Table(title="Run Info", show_header=False)
+            table = Table(title="Dockerenv Run Info", show_header=False)
             table.add_column("Key", style="bold cyan")
             table.add_column("Value", style="bold magenta")
             table.add_row("Image", self.conf.image)
@@ -737,21 +769,30 @@ class DockerEnv(Env[DockerConf]):
 class QTDockerEnv(DockerEnv):
     """Qlib Torch Docker"""
 
+    # automic call after new
     def __init__(self, conf: DockerConf = QlibDockerConf()):
+        # explic all super init
+        print("------- dockerenv.init for qt using qlibdockerconf")
         super().__init__(conf)
 
     def prepare(self, *args, **kwargs) -> None:  # type: ignore[explicit-override, no-untyped-def]
         """
         Download image & data if it doesn't exist
         """
+        print("------- use qt docker env")
+        print("------- begin prepare")
         super().prepare()
+        print("------- end prepare")
         qlib_data_path = next(iter(self.conf.extra_volumes.keys()))
         if not (Path(qlib_data_path) / "qlib_data" / "cn_data").exists():
             logger.info("We are downloading!")
             cmd = "python -m qlib.run.get_data qlib_data --target_dir ~/.qlib/qlib_data/cn_data --region cn --interval 1d --delete_old False"
+            print("----------qtrun the cmd when qlib_data_path no exist")
+            print(Path(qlib_data_path))
             self.run(entry=cmd)
+
         else:
-            logger.info("Data already exists. Download skipped.")
+            logger.info("Data already exists. Download skipped. after prepare")
 
 
 class DMDockerEnv(DockerEnv):
@@ -764,6 +805,7 @@ class DMDockerEnv(DockerEnv):
         """
         Download image & data if it doesn't exist
         """
+        print("use dm docker env")
         super().prepare()
         data_path = next(iter(self.conf.extra_volumes.keys()))
         if not (Path(data_path)).exists():

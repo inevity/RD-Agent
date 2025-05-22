@@ -1,6 +1,7 @@
 .PHONY: clean deepclean install init-qlib-env dev constraints black isort mypy ruff toml-sort lint pre-commit test-run test build upload docs-autobuild changelog docs-gen docs-mypy docs-coverage docs
 #You can modify it according to your terminal
 SHELL := /bin/bash
+#SHELL := /usr/bin/zsh
 
 ########################################################################################
 # Variables

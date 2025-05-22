@@ -8,6 +8,7 @@ from pydantic import Field
 from rdagent.core.conf import ExtendedBaseSettings
 
 
+# env set 
 class LLMSettings(ExtendedBaseSettings):
     # backend
     backend: str = "rdagent.oai.backend.DeprecBackend"

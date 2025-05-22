@@ -10,19 +10,39 @@ from jinja2 import Environment, StrictUndefined
 
 from rdagent.components.coder.factor_coder.config import FACTOR_COSTEER_SETTINGS
 from rdagent.utils.env import QTDockerEnv
+import inspect, traceback
+from rdagent.log import rdagent_logger as logger
+
 
 
 def generate_data_folder_from_qlib():
     template_path = Path(__file__).parent / "factor_data_template"
+    print("create qt docker env in generate_data_folder")
+    print("QTDockerEnv initiantie")
+    # automic call after new
     qtde = QTDockerEnv()
-    qtde.prepare()
+    print("qtde prepare begin")
 
+    print(qtde)
+    print(inspect.getmembers(qtde))
+
+    qtde.prepare()
+    print("qtde prepare end")
+
+    print("TO  qt docker run:qtde.run generate.py")
+    print(template_path)
+    #running_extra_volume = {str(Path("~/.qlib/").expanduser().resolve().absolute()): "/root/.qlib/"}
     # Run the Qlib backtest
+    # Core
     execute_log = qtde.run(
         local_path=str(template_path),
-        entry=f"python generate.py",
+        entry=f"python --version && ls -lah ~/.qlib && python generate.py",
+        #running_extra_volume=running_extra_volume,
     )
+    print("-- generate_data_folder_from_qlib and the log below")
+    print(execute_log)
 
+    print("---- check")
     assert (
         Path(__file__).parent / "factor_data_template" / "daily_pv_all.h5"
     ).exists(), "daily_pv_all.h5 is not generated."
@@ -141,6 +161,8 @@ def get_data_folder_intro(fname_reg: str = ".*", flags=0, variable_mapping=None)
             The description of the data folder.
     """
 
+    # print("Call stack:")
+    logger.info(traceback.print_stack())
     if (
         not Path(FACTOR_COSTEER_SETTINGS.data_folder).exists()
         or not Path(FACTOR_COSTEER_SETTINGS.data_folder_debug).exists()

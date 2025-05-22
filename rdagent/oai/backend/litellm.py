@@ -28,6 +28,7 @@ logger.info(f"{LITELLM_SETTINGS}")
 ACC_COST = 0.0
 
 
+# impl for APIBackend
 class LiteLLMAPIBackend(APIBackend):
     """LiteLLM implementation of APIBackend interface"""
 
@@ -73,10 +74,30 @@ class LiteLLMAPIBackend(APIBackend):
         """
         Call the chat completion function
         """
-        if json_mode and supports_response_schema(model=LITELLM_SETTINGS.chat_model):
-            kwargs["response_format"] = {"type": "json_object"}
+        logger.info(
+            f"Chat completion add inner function called with:\n"
+            f"messages: {truncate(messages)}\n"
+            f"json_mode: {json_mode}\n"
+        )
+        
+        # Log positional args if present
+        if args:
+            logger.info(f"Additional positional args (*args): {args}")
+        
+        # Log additional kwargs if present
+        if kwargs:
+            logger.info(f"Additional kwargs (**kwargs): {kwargs}")
+        
+        logger.info("Additional kwargs kwargs done")
 
-        logger.info(self._build_log_messages(messages), tag="llm_messages")
+        if json_mode and supports_response_schema(model=LITELLM_SETTINGS.chat_model):
+            logger.info("---------------model support json format response")
+            kwargs["response_format"] = {"type": "json_object"}
+        else:
+            logger.info("---------------model did not support json format response")
+
+
+        logger.info(f"input,: {self._build_log_messages(messages)}", tag="llm_messages")
         # Call LiteLLM completion
         model = LITELLM_SETTINGS.chat_model
         temperature = LITELLM_SETTINGS.chat_temperature
@@ -85,6 +106,7 @@ class LiteLLMAPIBackend(APIBackend):
 
         if LITELLM_SETTINGS.chat_model_map:
             for t, mc in LITELLM_SETTINGS.chat_model_map.items():
+                # not use now 
                 if t in logger._tag:
                     model = mc["model"]
                     if "temperature" in mc:
@@ -97,6 +119,30 @@ class LiteLLMAPIBackend(APIBackend):
                         else:
                             reasoning_effort = None
                     break
+
+        logger.info(f"{LogColors.GREEN}Calling litellm completion fn{LogColors.END}")
+        logger.info(
+            f"litellm completion function called with:\n"
+            f"model: {model}\n"
+            f"messages: {truncate(messages)}\n"
+            f"stream: {LITELLM_SETTINGS.chat_stream}\n"
+            f"temperature: {temperature}\n"
+            f"max_tokens: {max_tokens}\n"
+            f"reasoning_effort: {reasoning_effort}\n"
+            f"max_retries: {0}\n"
+        )
+        if kwargs:
+            logger.info(f"Additional kwargs (**kwargs): {kwargs}")
+        
+        logger.info("Additional kwargs kwargs done")
+
+        # base_url: Optional[str] = None,
+        # api_version: Optional[str] = None,
+        # api_key: Optional[str] = None,
+        # model_list: Optional[list] = None,  # pass in a list of api_base,keys, etc.
+        # # Optional liteLLM function params
+        # thinking: Optional[AnthropicThinkingParam] = None,
+        # **kwargs,
         response = completion(
             model=model,
             messages=messages,
@@ -110,7 +156,7 @@ class LiteLLMAPIBackend(APIBackend):
         logger.info(f"{LogColors.GREEN}Using chat model{LogColors.END} {model}", tag="llm_messages")
 
         if LITELLM_SETTINGS.chat_stream:
-            logger.info(f"{LogColors.BLUE}assistant:{LogColors.END}", tag="llm_messages")
+            logger.info(f"{LogColors.BLUE}assistant response:{LogColors.END}", tag="llm_messages")
             content = ""
             finish_reason = None
             for message in response:

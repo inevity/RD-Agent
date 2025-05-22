@@ -20,6 +20,8 @@ from rdagent.log import rdagent_logger as logger
 from rdagent.log.timer import RD_Agent_TIMER_wrapper
 from rdagent.oai.llm_conf import LLM_SETTINGS
 from rdagent.utils import md5_hash
+from pprint import pformat
+import inspect, traceback
 
 try:
     import litellm
@@ -264,6 +266,8 @@ class APIBackend(ABC):
             )
         return log_messages
 
+
+# main portal
     def build_messages_and_create_chat_completion(  # type: ignore[no-untyped-def]
         self,
         user_prompt: str,
@@ -274,6 +278,17 @@ class APIBackend(ABC):
         *args,
         **kwargs,
     ) -> str:
+        # Get the frame one level up in the call stack
+        caller_frame = inspect.stack()[1]
+        caller_name = caller_frame.function
+        caller_file = caller_frame.filename
+        caller_line = caller_frame.lineno
+
+        logger.info(f"Called by function '{caller_name}' in {caller_file}, line {caller_line}")
+        # print("Call stack:")
+        # traceback.print_stack()
+
+
         if former_messages is None:
             former_messages = []
         messages = self._build_messages(
@@ -283,6 +298,7 @@ class APIBackend(ABC):
             shrink_multiple_break=shrink_multiple_break,
         )
 
+        logger.info("create completion")
         resp = self._try_create_chat_completion_or_embedding(  # type: ignore[misc]
             *args,
             messages=messages,
@@ -296,6 +312,7 @@ class APIBackend(ABC):
         return resp
 
     def create_embedding(self, input_content: str | list[str], *args, **kwargs) -> list[float] | list[list[float]]:  # type: ignore[no-untyped-def]
+        logger.info("create embedding")
         input_content_list = [input_content] if isinstance(input_content, str) else input_content
         resp = self._try_create_chat_completion_or_embedding(  # type: ignore[misc]
             input_content_list=input_content_list,
@@ -340,6 +357,7 @@ class APIBackend(ABC):
                 if embedding:
                     return self._create_embedding_with_cache(*args, **kwargs)
                 if chat_completion:
+                    # logger.info(f"kwargs received:\n{pformat(kwargs, indent=2)}")
                     return self._create_chat_completion_auto_continue(*args, **kwargs)
             except Exception as e:  # noqa: BLE001
                 if hasattr(e, "message") and (
@@ -408,6 +426,23 @@ class APIBackend(ABC):
         """
         add json related content in the prompt if add_json_in_prompt is True
         """
+        logger.info(
+            f"Chat completion add json in prompt called with:\n"
+            f"messages: {truncate(messages)}\n"
+            f"add_json_in_prompt: {add_json_in_prompt}\n"
+            f"json_mode: {json_mode}\n"
+        )
+        
+        # Log positional args if present
+        if args:
+            logger.info(f"Additional positional args (*args): {args}")
+        
+        # Log additional kwargs if present
+        if kwargs:
+            logger.info(f"Additional kwargs (**kwargs): {kwargs}")
+        
+        logger.info("Additional kwargs kwargs done")
+
         if json_mode and add_json_in_prompt:
             for message in messages[::-1]:
                 message["content"] = message["content"] + "\nPlease respond in json format."
@@ -418,23 +453,46 @@ class APIBackend(ABC):
 
     def _create_chat_completion_auto_continue(
         self,
-        messages: list[dict[str, Any]],
+        messages: list[dict[str, Any]], #messages is positional but can optionally be named
         *args: Any,
         json_mode: bool = False,
         chat_cache_prefix: str = "",
         seed: Optional[int] = None,
         json_target_type: Optional[str] = None,
         **kwargs: Any,
+    # positional args and keyword argus 
     ) -> str:
         """
         Call the chat completion function and automatically continue the conversation if the finish_reason is length.
         """
+
+        logger.info(
+            f"Chat completion called with:\n"
+            f"messages: {truncate(messages)}\n"
+            f"json_mode: {json_mode}\n"
+            f"chat_cache_prefix: {chat_cache_prefix}\n"
+            f"seed: {seed}\n"
+            f"json_target_type: {json_target_type}"
+        )
+        
+        # Log positional args if present
+        if args:
+            logger.info(f"Additional positional args (*args): {args}")
+        
+        # Log additional kwargs if present
+        if kwargs:
+            logger.info(f"Additional kwargs (**kwargs): {kwargs}")
+        
+        logger.info("Additional kwargs kwargs done")
+
+
         if seed is None and LLM_SETTINGS.use_auto_chat_cache_seed_gen:
             seed = LLM_CACHE_SEED_GEN.get_next_seed()
         input_content_json = json.dumps(messages)
         input_content_json = (
             chat_cache_prefix + input_content_json + f"<seed={seed}/>"
         )  # FIXME this is a hack to make sure the cache represents the round index
+
         if self.use_chat_cache:
             cache_result = self.cache.chat_get(input_content_json)
             if cache_result is not None:
@@ -445,7 +503,10 @@ class APIBackend(ABC):
 
         all_response = ""
         new_messages = deepcopy(messages)
+        # fuck !!!!! 
         try_n = 6
+        # logger.info(f"autocontine: kwargs received:\n{pformat(kwargs, indent=2)}")
+        # logger.info(f"autocontine: json mode:\n{pformat(json, indent=2)}")
         for _ in range(try_n):  # for some long code, 3 times may not enough for reasoning models
             if "json_mode" in kwargs:
                 del kwargs["json_mode"]
@@ -453,16 +514,41 @@ class APIBackend(ABC):
                 new_messages, json_mode=json_mode, *args, **kwargs
             )  # type: ignore[misc]
             all_response += response
+            logger.info(f"response:{all_response}")
+
+
             if finish_reason is None or finish_reason != "length":
                 if json_mode:
                     try:
+                        
+                        logger.info("load all_response in try")
                         json.loads(all_response)
+                        #parse_markdonw_json(all_response)
                     except:
                         match = re.search(r"```json(.*)```", all_response, re.DOTALL)
                         all_response = match.groups()[0] if match else all_response
+                        # this line finds and captures everything between ```json and ```
+                        logger.info(f"fixed response in except:{all_response}")
+                        logger.info("load all_response in except")
                         json.loads(all_response)
+
+
+                # logger.info("load fixed all_response")
+                # json.loads(all_response)
+                # try:
+                #     fixed = sanitize_and_parse_json(all_response)
+                #     # print("Successfully parsed:")
+                #     # print(json.dumps(fixed, indent=2))
+                # except ValueError as e:
+                #     print(f"Error: {e}")
+                # #escaped_json = json.dumps({"code": code}, indent=4)
+                
+
                 if json_target_type is not None:
+                    logger.info("to valating the json using the json_target_type")
                     TypeAdapter(json_target_type).validate_json(all_response)
+                    logger.info("done valating the json")
+
                 if self.dump_chat_cache:
                     self.cache.chat_set(input_content_json, all_response)
                 return all_response
