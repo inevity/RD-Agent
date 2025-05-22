@@ -728,6 +728,8 @@ class DockerEnv(Env[DockerConf]):
                 Console().print(decoded_log, markup=False)
                 log_output += decoded_log + "\n"
             exit_status = container.wait()["StatusCode"]
+            # container.stop()
+            # container.remove()
             container.stop()
             container.remove()
             print(Rule("[bold green]Docker Logs End[/bold green]", style="dark_orange"))
