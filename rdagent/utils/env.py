@@ -690,7 +690,8 @@ class DockerEnv(Env[DockerConf]):
             Path(cache_path).mkdir(parents=True, exist_ok=True)
             volumes[cache_path] = {"bind": "/tmp/cache", "mode": "rw"}
         for lp, rp in running_extra_volume.items():
-            volumes[lp] = {"bind": rp, "mode": self.conf.extra_volume_mode}
+            #volumes[lp] = {"bind": rp, "mode": self.conf.extra_volume_mode}
+            volumes[lp] = {"bind": rp, "mode": "rw"}
 
         log_output = ""
 
